@@ -1,51 +1,6 @@
-// import React from 'react'
-// import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
-
-// function Denoiser() {
-    // const handleProcess = async() => {
-    //     const ffmpeg = createFFmpeg({ log: true });
-    
-    //     await ffmpeg.load();
-    //     const fileInput = document.getElementById('fileInput');
-    //     const file = fileInput.files[0];
-    //     if (!file) {
-    //         alert('Please select an audio file.');
-    //         return;
-    //     }
-    
-    //     const fileName = file.name;
-    //     await ffmpeg.FS('writeFile', fileName, await fetchFile(file));
-    
-    //     // Adjust the path to correctly reference the model file in the public directory
-    //     const rnnoiseModelPath = '/cb.rnnn'; // Corrected path to reference the public directory
-    //     await ffmpeg.FS('writeFile', 'cb.rnnn', await fetchFile(rnnoiseModelPath));
-    
-    //     await ffmpeg.run('-i', fileName, '-af', 'arnndn=m=cb.rnnn', 'output.wav');
-    //     const data = ffmpeg.FS('readFile', 'output.wav');
-    //     const url = URL.createObjectURL(new Blob([data.buffer], { type: 'audio/wav' }));
-    //     const downloadLink = document.getElementById('downloadLink');
-    //     downloadLink.href = url;
-    //     downloadLink.download = 'output.wav';
-    //     downloadLink.style.display = 'block';
-    //     downloadLink.textContent = 'Download Processed File';
-//       }
-//   return (
-//     <>
-//     <div id="second-container">
-//       <input type="file" id="fileInput" accept="audio/*" />
-//       <button id="processButton" onClick={handleProcess}>Process</button>
-//       <a id="downloadLink" style={{display:"none"}}>
-//         Download Processed File
-//       </a>
-//     </div>
-//   </>
-//   )
-// }
-
-// export default Denoiser
-
 import React, { useState } from 'react';
 import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
+import getPauseCount from './pausecount';
 
 function Denoiser() {
     const [recording, setRecording] = useState(false);
@@ -53,6 +8,8 @@ function Denoiser() {
     const [recordedChunks, setRecordedChunks] = useState([]);
     const [recordedUrl, setRecordedUrl] = useState(null);
     const [denoisedUrl, setDenoisedUrl] = useState(null);
+    const [recordedPauseCount, setRecordedPauseCount] = useState(null);
+    const [denoisedPauseCount, setDenoisedPauseCount] = useState(null);
 
     const handleStartRecording = () => {
         if (mediaRecorder) {
@@ -91,8 +48,14 @@ function Denoiser() {
         await ffmpeg.load();
         
         // Convert recorded audio chunks to a single blob
-        const recordedBlob = new Blob(recordedChunks);
+        const recordedBlob = new Blob(recordedChunks, { type: 'audio/webm' });
+        
         setRecordedUrl(URL.createObjectURL(recordedBlob));
+        
+        // Calculate pause count for recorded audio
+        const recordedCount = await getPauseCount(recordedBlob);
+        setRecordedPauseCount(recordedCount);
+
         await ffmpeg.FS('writeFile', 'recorded.webm', await fetchFile(recordedBlob));
         
         // Adjust the path to correctly reference the model file in the public directory
@@ -101,9 +64,14 @@ function Denoiser() {
 
         await ffmpeg.run('-i', 'recorded.webm', '-af', 'arnndn=m=cb.rnnn', 'output.wav');
         const data = ffmpeg.FS('readFile', 'output.wav');
-        const denoisedUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'audio/wav' }));
+        const denoisedBlob = new Blob([data.buffer], { type: 'audio/wav' });
+        const denoisedUrl = URL.createObjectURL(denoisedBlob);
         
         setDenoisedUrl(denoisedUrl);
+
+        // Calculate pause count for denoised audio
+        const denoisedCount = await getPauseCount(denoisedBlob);
+        setDenoisedPauseCount(denoisedCount);
     };
 
     return (
@@ -116,7 +84,7 @@ function Denoiser() {
                     Process
                 </button>
             </div>
-            
+
             {recordedUrl && (
                 <div>
                     <h3>Recorded Audio</h3>
@@ -124,6 +92,9 @@ function Denoiser() {
                         <source src={recordedUrl} type="audio/webm" />
                         Your browser does not support the audio element.
                     </audio>
+                    {recordedPauseCount !== null && (
+                        <div>Recorded Audio Pause Count: {recordedPauseCount}</div>
+                    )}
                 </div>
             )}
 
@@ -134,6 +105,9 @@ function Denoiser() {
                         <source src={denoisedUrl} type="audio/wav" />
                         Your browser does not support the audio element.
                     </audio>
+                    {denoisedPauseCount !== null && (
+                        <div>Denoised Audio Pause Count: {denoisedPauseCount}</div>
+                    )}
                 </div>
             )}
         </>
